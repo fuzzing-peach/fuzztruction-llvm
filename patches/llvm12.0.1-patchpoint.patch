@@ -1,0 +1,215 @@
+diff --git a/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp b/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp
+index 4a686bc227de..a1796db9e585 100644
+--- a/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp
++++ b/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp
+@@ -1445,11 +1445,16 @@ bool DAGTypeLegalizer::PromoteIntegerOperand(SDNode *N, unsigned OpNo) {
+   LLVM_DEBUG(dbgs() << "Promote integer operand: "; N->dump(&DAG);
+              dbgs() << "\n");
+   SDValue Res = SDValue();
+-  if (CustomLowerNode(N, N->getOperand(OpNo).getValueType(), false)) {
+-    LLVM_DEBUG(dbgs() << "Node has been custom lowered, done\n");
+-    return false;
++
++  if (!(N->isMachineOpcode() && N->getMachineOpcode() == TargetOpcode::PATCHPOINT)) {
++    if (CustomLowerNode(N, N->getOperand(OpNo).getValueType(), false)) {
++      LLVM_DEBUG(dbgs() << "Node has been custom lowered, done\n");
++      return false;
++    }
+   }
+ 
++  constexpr uint16_t patchpoint_opc_as_isd = ~TargetOpcode::PATCHPOINT;
++
+   switch (N->getOpcode()) {
+     default:
+   #ifndef NDEBUG
+@@ -1535,6 +1540,18 @@ bool DAGTypeLegalizer::PromoteIntegerOperand(SDNode *N, unsigned OpNo) {
+   case ISD::VECREDUCE_SMIN:
+   case ISD::VECREDUCE_UMAX:
+   case ISD::VECREDUCE_UMIN: Res = PromoteIntOp_VECREDUCE(N); break;
++  case patchpoint_opc_as_isd:
++    dbgs() << "PromoteIntegerOperand() Handling patch point argument\n";
++    std::vector<SDValue> ops;
++    for (unsigned i = 0; i < N->getNumOperands(); i++) {
++      ops.push_back(N->getOperand(i));
++    }
++
++    ops[OpNo] = GetPromotedInteger(N->getOperand(OpNo));
++
++    Res = SDValue(DAG.UpdateNodeOperands(N, ops), 0);
++
++    break;
+   }
+ 
+   // If the result is null, the sub-method took care of registering results etc.
+@@ -4146,8 +4163,12 @@ bool DAGTypeLegalizer::ExpandIntegerOperand(SDNode *N, unsigned OpNo) {
+              dbgs() << "\n");
+   SDValue Res = SDValue();
+ 
+-  if (CustomLowerNode(N, N->getOperand(OpNo).getValueType(), false))
+-    return false;
++  if (!(N->isMachineOpcode() && N->getMachineOpcode() == TargetOpcode::PATCHPOINT)) {
++    if (CustomLowerNode(N, N->getOperand(OpNo).getValueType(), false))
++      return false;
++  }
++
++  constexpr uint16_t patchpoint_opc_as_isd = ~TargetOpcode::PATCHPOINT;
+ 
+   switch (N->getOpcode()) {
+   default:
+@@ -4182,6 +4203,23 @@ bool DAGTypeLegalizer::ExpandIntegerOperand(SDNode *N, unsigned OpNo) {
+   case ISD::FRAMEADDR:         Res = ExpandIntOp_RETURNADDR(N); break;
+ 
+   case ISD::ATOMIC_STORE:      Res = ExpandIntOp_ATOMIC_STORE(N); break;
++  case patchpoint_opc_as_isd:
++    dbgs() << "ExpandIntegerOperand(): Handling patch point\n";
++    std::vector<SDValue> ops;
++    for (unsigned i = 0; i < N->getNumOperands(); i++) {
++      ops.push_back(N->getOperand(i));
++    }
++
++    // FIXME: We need to replace the patch point by one that references
++    // the high and the low operand of the expanded integer.
++    GetExpandedInteger(N->getOperand(OpNo), ops[OpNo], ops[OpNo]);
++
++    //Res = DAG.getNode(ISD::ANY_EXTEN0TOR_INREG, DL, VT, InOp);
++    //auto mn = DAG.getMachineNode(TargetOpcode::PATCHPOINT, SDLoc(N), N->getVTList(), ops);
++    //Res = SDValue(mn, 0);
++    Res = SDValue(DAG.UpdateNodeOperands(N, ops), 0);
++
++    break;
+   }
+ 
+   // If the result is null, the sub-method took care of registering results etc.
+diff --git a/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp b/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp
+index 57cb364f1939..1e407326e94c 100644
+--- a/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp
++++ b/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorTypes.cpp
+@@ -2088,9 +2088,12 @@ bool DAGTypeLegalizer::SplitVectorOperand(SDNode *N, unsigned OpNo) {
+   LLVM_DEBUG(dbgs() << "Split node operand: "; N->dump(&DAG); dbgs() << "\n");
+   SDValue Res = SDValue();
+ 
+-  // See if the target wants to custom split this node.
+-  if (CustomLowerNode(N, N->getOperand(OpNo).getValueType(), false))
+-    return false;
++  if (!(N->isMachineOpcode() && N->getMachineOpcode() == TargetOpcode::PATCHPOINT)) {
++    // See if the target wants to custom split this node.
++    if (CustomLowerNode(N, N->getOperand(OpNo).getValueType(), false))
++      return false;
++  }
++  constexpr uint16_t patchpoint_opc_as_isd = ~TargetOpcode::PATCHPOINT;
+ 
+   switch (N->getOpcode()) {
+   default:
+@@ -2181,6 +2184,17 @@ bool DAGTypeLegalizer::SplitVectorOperand(SDNode *N, unsigned OpNo) {
+   case ISD::VECREDUCE_SEQ_FMUL:
+     Res = SplitVecOp_VECREDUCE_SEQ(N);
+     break;
++  case patchpoint_opc_as_isd:
++    dbgs() << "SplitVectorOperand(): Handling patch point\n";
++
++    std::vector<SDValue> ops;
++    for (unsigned i = 0; i < N->getNumOperands(); i++) {
++      ops.push_back(N->getOperand(i));
++    }
++    // FIXME: We should add a patch point for each resulting vector type.
++    GetSplitVector(N->getOperand(OpNo), ops[OpNo], ops[OpNo]);
++    Res = SDValue(DAG.UpdateNodeOperands(N, ops), 0);
++    break;
+   }
+ 
+   // If the result is null, the sub-method took care of registering results etc.
+@@ -4456,9 +4470,13 @@ bool DAGTypeLegalizer::WidenVectorOperand(SDNode *N, unsigned OpNo) {
+              dbgs() << "\n");
+   SDValue Res = SDValue();
+ 
+-  // See if the target wants to custom widen this node.
+-  if (CustomLowerNode(N, N->getOperand(OpNo).getValueType(), false))
+-    return false;
++  if (!(N->isMachineOpcode() && N->getMachineOpcode() == TargetOpcode::PATCHPOINT)) {
++    // See if the target wants to custom widen this node.
++    if (CustomLowerNode(N, N->getOperand(OpNo).getValueType(), false))
++      return false;
++  }
++
++  constexpr uint16_t patchpoint_opc_as_isd = ~TargetOpcode::PATCHPOINT;
+ 
+   switch (N->getOpcode()) {
+   default:
+@@ -4529,6 +4547,17 @@ bool DAGTypeLegalizer::WidenVectorOperand(SDNode *N, unsigned OpNo) {
+   case ISD::VECREDUCE_SEQ_FMUL:
+     Res = WidenVecOp_VECREDUCE_SEQ(N);
+     break;
++  case patchpoint_opc_as_isd:
++    dbgs() << "WidenVectorOperand(): Handling patch point\n";
++    std::vector<SDValue> ops;
++    for (unsigned i = 0; i < N->getNumOperands(); i++) {
++      ops.push_back(N->getOperand(i));
++    }
++
++    ops[OpNo] = GetWidenedVector(N->getOperand(OpNo));
++
++    Res = SDValue(DAG.UpdateNodeOperands(N, ops), 0);
++    break;
+   }
+ 
+   // If Res is null, the sub-method took care of registering the result.
+diff --git a/llvm/lib/CodeGen/StackMaps.cpp b/llvm/lib/CodeGen/StackMaps.cpp
+index faf07e90c39c..71bef7464b8e 100644
+--- a/llvm/lib/CodeGen/StackMaps.cpp
++++ b/llvm/lib/CodeGen/StackMaps.cpp
+@@ -349,11 +349,13 @@ StackMaps::parseRegisterLiveOutMask(const uint32_t *Mask) const {
+   assert(Mask && "No register mask specified");
+   const TargetRegisterInfo *TRI = AP.MF->getSubtarget().getRegisterInfo();
+   LiveOutVec LiveOuts;
++  BitVector regsReserved = TRI->getReservedRegs(*AP.MF);
+ 
+   // Create a LiveOutReg for each bit that is set in the register mask.
+   for (unsigned Reg = 0, NumRegs = TRI->getNumRegs(); Reg != NumRegs; ++Reg)
+     if ((Mask[Reg / 32] >> (Reg % 32)) & 1)
+-      LiveOuts.push_back(createLiveOutReg(Reg, TRI));
++      if (!regsReserved.test(Reg))
++        LiveOuts.push_back(createLiveOutReg(Reg, TRI));
+ 
+   // We don't need to keep track of a register if its super-register is already
+   // in the list. Merge entries that refer to the same dwarf register and use
+diff --git a/llvm/lib/Target/X86/X86FloatingPoint.cpp b/llvm/lib/Target/X86/X86FloatingPoint.cpp
+index e6ee46957500..b50c745f3ec8 100644
+--- a/llvm/lib/Target/X86/X86FloatingPoint.cpp
++++ b/llvm/lib/Target/X86/X86FloatingPoint.cpp
+@@ -984,6 +984,15 @@ void FPS::handleCall(MachineBasicBlock::iterator &I) {
+     if (!Op.isReg() || Op.getReg() < X86::FP0 || Op.getReg() > X86::FP6)
+       continue;
+ 
++    // FIXME: We probably cause the resulting patch point to not contain the
++    // floating point values as live value.
++    if (!Op.isImplicit()) {
++      MI.RemoveOperand(i);
++      --i;
++      --e;
++      continue;
++    }
++
+     assert(Op.isImplicit() && "Expected implicit def/use");
+ 
+     if (Op.isDef())
+@@ -1007,6 +1016,7 @@ void FPS::handleCall(MachineBasicBlock::iterator &I) {
+   while (StackTop > 0)
+     popReg();
+ 
++  /* Only executed if the call defines values stores in FP registers. */
+   for (unsigned I = 0; I < N; ++I)
+     pushReg(N - I - 1);
+ }
+diff --git a/llvm/lib/Target/X86/X86RegisterInfo.cpp b/llvm/lib/Target/X86/X86RegisterInfo.cpp
+index d90b4e7bdc7e..b008a8ad381a 100644
+--- a/llvm/lib/Target/X86/X86RegisterInfo.cpp
++++ b/llvm/lib/Target/X86/X86RegisterInfo.cpp
+@@ -764,7 +764,7 @@ X86RegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
+   // The frame index format for stackmaps and patchpoints is different from the
+   // X86 format. It only has a FI and an offset.
+   if (Opc == TargetOpcode::STACKMAP || Opc == TargetOpcode::PATCHPOINT) {
+-    assert(BasePtr == FramePtr && "Expected the FP as base register");
++    //assert(BasePtr == FramePtr && "Expected the FP as base register");
+     int64_t Offset = MI.getOperand(FIOperandNum + 1).getImm() + FIOffset;
+     MI.getOperand(FIOperandNum + 1).ChangeToImmediate(Offset);
+     return;

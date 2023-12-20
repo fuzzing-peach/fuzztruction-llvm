@@ -10,7 +10,7 @@ ARG BASE_PATH=/llvm
 
 RUN --mount=type=cache,id=1,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt \
     apt update -y \
-    && apt install -y llvm-13-dev build-essential git cmake binutils-gold ninja-build ccache
+    && apt install -y llvm-dev build-essential git cmake binutils-gold ninja-build ccache zlib1g-dev
 
 RUN mkdir -p ${BASE_PATH} ${BASE_PATH}/build
 RUN git clone https://github.com/llvm/llvm-project.git ${BASE_PATH}/llvm

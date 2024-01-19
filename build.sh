@@ -4,7 +4,7 @@ set -eu
 # LLVM_VERSION="llvmorg-12.0.1"
 # LLVM_VERSION="llvmorg-11.0.1"
 # LLVM_VERSION="llvmorg-13.0.1"
-LLVM_VERSION="llvmorg-17.0.4"
+LLVM_VERSION="llvmorg-17.0.6"
 #LLVM_VERSION="eb1d5065c560b3468fa0d34af3103359cd78c088"
 
 #REMOTE_SERVER=blade-7

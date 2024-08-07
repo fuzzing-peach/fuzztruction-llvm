@@ -16,7 +16,7 @@ export DOCKER_BUILDKIT=1
 TAG=llvm_debug:${LLVM_VERSION}
 IMAGE="fuzztruction-$TAG"
 # Push Docker image to the given URL if set.
-PUSH_URL=nbars/$IMAGE
+# PUSH_URL=nbars/$IMAGE
 
 docker build --build-arg LLVM_VERSION=${LLVM_VERSION} -t ${IMAGE} .
 if [[ ! -z "${PUSH_URL:-}" ]]; then

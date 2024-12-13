@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:experimental
 
-FROM ubuntu:23.04 AS build
+FROM ubuntu:24.04 AS build
 ENV DEBIAN_FRONTEND noninteractive
 ENV CCACHE_DIR=/ccache
 ENV CCACHE_MAXSIZE=25G

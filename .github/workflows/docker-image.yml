@@ -25,5 +25,5 @@ jobs:
         VERSION=llvmorg-17.0.6
         echo IMAGE_ID=$IMAGE_ID
         echo VERSION=$VERSION
-        docker tag fuzztruction-llvm_debug:$VERSION $IMAGE_ID
+        docker tag fuzztruction-llvm_debug:$VERSION $IMAGE_ID:$VERSION
         docker push $IMAGE_ID:$VERSION

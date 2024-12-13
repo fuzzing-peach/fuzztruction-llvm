@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/ccache/ \
 
 RUN ninja && ninja install
 
-FROM ubuntu:23.04
+FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND noninteractive
 ARG BASE_PATH=/llvm
 
